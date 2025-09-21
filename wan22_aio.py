@@ -27,16 +27,16 @@ image = (
     )
 )
 
-# Install necessary custom nodes based on workflow analysis
+# Install only essential custom nodes
 image = image.run_commands(
     # VideoHelperSuite - Required for VHS_VideoCombine and Video_Upscale_With_Model nodes
     "git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git /root/comfy/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite",
     # Essential utilities
     "git clone https://github.com/cubiq/ComfyUI_essentials.git /root/comfy/ComfyUI/custom_nodes/ComfyUI_essentials",
-    # ComfyUI Essentials for upscaling support
-    "git clone https://github.com/city96/ComfyUI-ESRGAN.git /root/comfy/ComfyUI/custom_nodes/ComfyUI-ESRGAN",
     # Install dependencies for VideoHelperSuite
     "cd /root/comfy/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite && pip install -r requirements.txt",
+    # Install upscaling packages
+    "pip install basicsr realesrgan",
 )
 
 def hf_download():
@@ -90,7 +90,7 @@ def hf_download():
         cache_dir="/cache",
     )
     
-    # Ensure upscale models directory exists (try both possible locations)
+    # Ensure upscale models directory exists (try multiple possible locations)
     upscale_dir = "/root/comfy/ComfyUI/models/upscale_models"
     esrgan_dir = "/root/comfy/ComfyUI/models/esrgan"
     os.makedirs(upscale_dir, exist_ok=True)
@@ -123,18 +123,18 @@ app = modal.App(name="wan-video-generation", image=image)
 
 @app.function(
     max_containers=1,
-    gpu="H100",  # Upgraded GPU for full-precision model
+    gpu="L40S",  # L40S GPU as requested
     volumes={"/cache": vol},
     timeout=3600,  # 1 hour timeout for video generation
 )
-@modal.concurrent(max_inputs=3)  # Reduced concurrency for full model
+@modal.concurrent(max_inputs=5)  # Increased concurrency for L40S
 @modal.web_server(8000, startup_timeout=120)  # Increased startup timeout
 def ui():
     subprocess.Popen("comfy launch -- --listen 0.0.0.0 --port 8000", shell=True)
 
 # Optional: CLI function for batch processing
 @app.function(
-    gpu="H100",
+    gpu="L40S",
     volumes={"/cache": vol},
     timeout=3600,
 )
