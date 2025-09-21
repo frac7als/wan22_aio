@@ -6,7 +6,6 @@ import modal
 # Fast-start ComfyUI (WAN 2.2 I2V safetensors, VHS only)
 # =========================
 
-# ------ Base image & system deps ------
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install(
@@ -17,46 +16,41 @@ image = (
         "wget",
     )
     .pip_install(
-        # Core runtime (Torch/CUDA comes from comfy --nvidia, cached on Modal)
-        "opencv-python-headless",
+        # Pin a stable NumPy / OpenCV combo so VHS doesn't fight us later
+        "numpy==1.26.4",
+        "opencv-python-headless==4.10.0.84",
+        # Core runtime
         "imageio[ffmpeg]",
         "moviepy",
+        "einops",   # VHS uses it
+        "av",       # VHS video IO
+        "decord",   # VHS video IO (alt)
         "fastapi[standard]==0.115.4",
         "comfy-cli==1.5.1",
         "huggingface_hub[hf_transfer]>=0.34.0,<1.0",
-        # VHS dependencies
-        "av",
-        "decord",
-        "einops",
     )
     .run_commands(
-        # Install ComfyUI with NVIDIA stack (pulls CUDA torch/vision as needed)
+        # Install ComfyUI (brings CUDA torch/vision from Modal cache)
         "comfy --skip-prompt install --fast-deps --nvidia --version 0.3.59",
-        # Enable HF transfer acceleration globally
+        # Enable HF transfer acceleration in shell sessions too
         'bash -lc \'echo "export HF_HUB_ENABLE_HF_TRANSFER=1" >> /etc/profile\'',
     )
-    # ------ Custom nodes ------
+    # Minimal custom nodes: VHS only
     .run_commands(
-        # VideoHelperSuite (VHS nodes & Video_Upscale_With_Model)
         "git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git "
-        "/root/comfy/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite",
-        # If VHS ships a requirements.txt, install it (don’t fail if missing)
-        "bash -lc 'REQ=/root/comfy/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite/requirements.txt; "
-        "if [ -f \"$REQ\" ]; then pip install -r \"$REQ\"; fi'",
+        "/root/comfy/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite"
+        # IMPORTANT: we intentionally DO NOT pip install VHS requirements.txt
+        # to avoid downgrading numpy/opencv again.
     )
-    # ------ Runtime env vars ------
     .env({
         "HF_HUB_ENABLE_HF_TRANSFER": "1",
         "CUDA_MODULE_LOADING": "LAZY",
         "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True,max_split_size_mb:128",
-        # Optional: pin Phr00t repo revision globally (can override at deploy time)
-        # "WAN_AIO_REV": "main",
+        # "WAN_AIO_REV": "main",  # set a specific commit hash here if you want
     })
 )
 
-# Shared HF cache volume so model blobs are reused
 HF_VOL = modal.Volume.from_name("hf-hub-cache", create_if_missing=True)
-
 
 def _ensure_dirs():
     for d in [
@@ -67,37 +61,28 @@ def _ensure_dirs():
     ]:
         os.makedirs(d, exist_ok=True)
 
-
 def _safe_ln(src, dst):
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     subprocess.run(f"ln -sf '{src}' '{dst}'", shell=True, check=True)
 
-
 def hf_warm_and_link():
-    """
-    One-time model warm (cached in /cache volume) with EXACT filenames your graph expects.
-    Keeps Phr00t UNET; revision can be pinned via WAN_AIO_REV (env var).
-    """
     from huggingface_hub import hf_hub_download
 
     _ensure_dirs()
 
-    # Allow pinning the Phr00t repo revision (commit/tag). Default to "main".
+    # Allow pinning the Phr00t repo revision (commit/tag). Default "main".
     UNET_REV = os.environ.get("WAN_AIO_REV", "main")
 
-    # --- UNET (WAN 2.2 I2V Rapid AIO, safetensors from Phr00t) ---
+    # UNET (Phr00t AIO)
     unet = hf_hub_download(
         repo_id="Phr00t/WAN2.2-14B-Rapid-AllInOne",
         filename="wan2.2-i2v-rapid-aio.safetensors",
         cache_dir="/cache",
         revision=UNET_REV,
     )
-    _safe_ln(
-        unet,
-        "/root/comfy/ComfyUI/models/diffusion_models/wan2.2-i2v-rapid-aio.safetensors",
-    )
+    _safe_ln(unet, "/root/comfy/ComfyUI/models/diffusion_models/wan2.2-i2v-rapid-aio.safetensors")
 
-    # --- VAE (WAN 2.1) ---
+    # VAE
     vae = hf_hub_download(
         repo_id="Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
         filename="split_files/vae/wan_2.1_vae.safetensors",
@@ -106,19 +91,16 @@ def hf_warm_and_link():
     )
     _safe_ln(vae, "/root/comfy/ComfyUI/models/vae/wan_2.1_vae.safetensors")
 
-    # --- Text encoder (UMT5) ---
+    # Text encoder (UMT5)
     t5 = hf_hub_download(
         repo_id="Comfy-Org/Wan_2.1_ComfyUI_repackaged",
         filename="split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
         cache_dir="/cache",
         revision="main",
     )
-    _safe_ln(
-        t5,
-        "/root/comfy/ComfyUI/models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
-    )
+    _safe_ln(t5, "/root/comfy/ComfyUI/models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors")
 
-    # --- Upscaler (Remacri) ---
+    # Upscaler (Remacri)
     try:
         remacri = hf_hub_download(
             repo_id="fofr/comfyui",
@@ -133,12 +115,9 @@ def hf_warm_and_link():
             cache_dir="/cache",
             revision="main",
         )
-    _safe_ln(
-        remacri,
-        "/root/comfy/ComfyUI/models/upscale_models/4x_foolhardy_Remacri.pth",
-    )
+    _safe_ln(remacri, "/root/comfy/ComfyUI/models/upscale_models/4x_foolhardy_Remacri.pth")
 
-    # Optional: list to verify
+    # Optional: verify
     for d in [
         "/root/comfy/ComfyUI/models/diffusion_models",
         "/root/comfy/ComfyUI/models/vae",
@@ -147,12 +126,10 @@ def hf_warm_and_link():
     ]:
         subprocess.run(f"ls -lh {d}", shell=True, check=False)
 
-
-# Bake the warm step into the image (cached) so first UI boot is quick
+# Bake model warm into the image so first UI boot is quick
 image = image.run_function(hf_warm_and_link, volumes={"/cache": HF_VOL})
 
 app = modal.App("wan22-i2v-rapid-aio-fast", image=image)
-
 
 @app.function(
     gpu="L40S",
@@ -162,15 +139,13 @@ app = modal.App("wan22-i2v-rapid-aio-fast", image=image)
 )
 @modal.web_server(8000, startup_timeout=600)
 def ui():
-    # Runtime fallbacks for env vars
+    # Ensure env present for child processes
     os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
     os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
-    os.environ.setdefault(
-        "PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True,max_split_size_mb:128"
-    )
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True,max_split_size_mb:128")
     os.environ.setdefault("WAN_AIO_REV", "main")
 
-    # Tiny CUDA warmup so first op feels instant
+    # CUDA warmup (avoid first-op lag)
     subprocess.run(
         "python - <<'PY'\n"
         "import torch\n"
@@ -182,5 +157,6 @@ def ui():
         check=False,
     )
 
-    # Launch ComfyUI
-    subprocess.Popen("comfy launch -- --listen 0.0.0.0 --port 8000", shell=True)
+    # Run ComfyUI in foreground (block) so the function stays alive
+    proc = subprocess.Popen("comfy launch -- --listen 0.0.0.0 --port 8000", shell=True)
+    proc.wait()
