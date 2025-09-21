@@ -81,7 +81,7 @@ def hf_download():
 
     # Download upscaling model - Required by Video_Upscale_With_Model node
     upscale_model = hf_hub_download(
-        repo_id="gemasai/4x_foolhardy_Remacri",
+        repo_id="FacehugmanIII/4x_foolhardy_Remacri",
         filename="4x_foolhardy_Remacri.pth",
         cache_dir="/cache",
     )
