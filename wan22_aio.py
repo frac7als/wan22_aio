@@ -33,6 +33,8 @@ image = image.run_commands(
     "git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git /root/comfy/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite",
     # Essential utilities
     "git clone https://github.com/cubiq/ComfyUI_essentials.git /root/comfy/ComfyUI/custom_nodes/ComfyUI_essentials",
+    # ComfyUI Essentials for upscaling support
+    "git clone https://github.com/city96/ComfyUI-ESRGAN.git /root/comfy/ComfyUI/custom_nodes/ComfyUI-ESRGAN",
     # Install dependencies for VideoHelperSuite
     "cd /root/comfy/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite && pip install -r requirements.txt",
 )
@@ -88,12 +90,20 @@ def hf_download():
         cache_dir="/cache",
     )
     
-    # Ensure upscale models directory exists
+    # Ensure upscale models directory exists (try both possible locations)
     upscale_dir = "/root/comfy/ComfyUI/models/upscale_models"
+    esrgan_dir = "/root/comfy/ComfyUI/models/esrgan"
     os.makedirs(upscale_dir, exist_ok=True)
+    os.makedirs(esrgan_dir, exist_ok=True)
     
+    # Link to both possible directories
     subprocess.run(
         f"ln -sf {upscale_model} {os.path.join(upscale_dir, '4x_foolhardy_Remacri.pth')}",
+        shell=True,
+        check=True,
+    )
+    subprocess.run(
+        f"ln -sf {upscale_model} {os.path.join(esrgan_dir, '4x_foolhardy_Remacri.pth')}",
         shell=True,
         check=True,
     )
