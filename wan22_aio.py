@@ -23,7 +23,7 @@ image = (
         "comfy-cli==1.5.1",
     )
     .run_commands(
-        "comfy --skip-prompt install --fast-deps --nvidia --version 0.3.47"
+        "comfy --skip-prompt install --fast-deps --nvidia --version 0.3.59"
     )
 )
 
