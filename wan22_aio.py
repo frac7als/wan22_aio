@@ -29,10 +29,12 @@ image = (
 
 # Install necessary custom nodes based on workflow analysis
 image = image.run_commands(
-    # VideoHelperSuite - Required for VHS_VideoCombine nodes
+    # VideoHelperSuite - Required for VHS_VideoCombine and Video_Upscale_With_Model nodes
     "git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git /root/comfy/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite",
     # Essential utilities
     "git clone https://github.com/cubiq/ComfyUI_essentials.git /root/comfy/ComfyUI/custom_nodes/ComfyUI_essentials",
+    # Install dependencies for VideoHelperSuite
+    "cd /root/comfy/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite && pip install -r requirements.txt",
 )
 
 def hf_download():
