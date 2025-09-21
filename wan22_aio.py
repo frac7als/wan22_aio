@@ -21,10 +21,10 @@ image = (
         "moviepy",
         "fastapi[standard]==0.115.4",
         "comfy-cli==1.5.1",
-        # Hugging Face with fast transfer
+        # HF with transfer acceleration
         "huggingface_hub[hf_transfer]>=0.34.0,<1.0",
     )
-    # Install ComfyUI (modern version to avoid node incompatibility)
+    # Install ComfyUI at a modern version (avoid node incompatibilities)
     .run_commands(
         "comfy --skip-prompt install --fast-deps --nvidia --version 0.3.59"
     )
@@ -33,8 +33,9 @@ image = (
         # VideoHelperSuite for VHS nodes & Video_Upscale_With_Model
         "git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git "
         "/root/comfy/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite",
-        # Resolve any node Python deps
-        "comfy node install --fast-deps --all"
+        # Install node requirements if present (don't fail if missing)
+        "bash -lc 'REQ=/root/comfy/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite/requirements.txt; "
+        "if [ -f \"$REQ\" ]; then pip install -r \"$REQ\"; fi'"
     )
 )
 
@@ -65,7 +66,6 @@ def hf_warm_and_link():
     _ensure_dirs()
 
     # --- UNET (WAN 2.2 I2V Rapid AIO, safetensors) ---
-    # Source: Phr00t/WAN2.2-14B-Rapid-AllInOne
     unet = hf_hub_download(
         repo_id="Phr00t/WAN2.2-14B-Rapid-AllInOne",
         filename="wan2.2-i2v-rapid-aio.safetensors",
@@ -113,7 +113,6 @@ def hf_warm_and_link():
             local_dir_use_symlinks=False,
         )
     except Exception:
-        # Fallback mirror
         remacri = hf_hub_download(
             repo_id="FacehugmanIII/4x_foolhardy_Remacri",
             filename="4x_foolhardy_Remacri.pth",
